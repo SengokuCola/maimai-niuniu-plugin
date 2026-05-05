@@ -113,7 +113,7 @@ class SelectionConfig(PluginConfigBase):
     __ui_order__ = 3
 
     history_hours: float = Field(default=24.0, ge=0.1, description="抽取最近多少小时内的历史消息")
-    history_limit: int = Field(default=200, ge=1, le=5000, description="每次最多读取的历史消息数量")
+    history_limit: int = Field(default=200, ge=1, le=10000, description="每次最多读取的历史消息数量")
     min_text_length: int = Field(default=1, ge=0, description="纯文本消息的最短长度")
 
 

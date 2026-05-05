@@ -1,0 +1,30 @@
+[plugin]
+enabled = true
+config_version = "1.3.0"
+
+[schedule]
+interval_minutes = 20
+startup_delay_seconds = 30
+
+[chat]
+# 群聊选择模式：
+# whitelist = 只在 group_rules 指定的群里随机抽取
+# blacklist = 在当前可见群聊中排除 group_rules 指定的群后随机抽取
+mode = "blacklist"
+
+# 需要扫描的消息平台；通常 QQ 用 ["qq"]，如需全平台可填 ["all_platforms"]
+platforms = ["qq"]
+
+# 群聊规则列表，格式：platform:id:type
+# type 一般填 group，例如：["qq:123456789:group"]
+group_rules = []
+
+[selection]
+history_hours = 128.0
+history_limit = 1000
+min_text_length = 1
+
+[rule]
+min_message_length = 1
+max_message_length = 200
+cooldown_seconds = 60.0

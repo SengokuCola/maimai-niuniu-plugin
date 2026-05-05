@@ -1,0 +1,42 @@
+{
+  "manifest_version": 2,
+  "version": "1.3.0",
+  "name": "麦麦牛牛插件 (Maimai Niuniu Plugin)",
+  "description": "夺舍牛牛，可以进行简单复读和说有趣的话",
+  "author": {
+    "name": "SengokuCola",
+    "url": "https://github.com/SengokuCola"
+  },
+  "license": "MIT",
+  "urls": {
+    "repository": "https://github.com/SengokuCola/maimai-niuniu-plugin",
+    "homepage": "https://github.com/SengokuCola/maimai-niuniu-plugin",
+    "documentation": "https://github.com/SengokuCola/MaiBot-rdev",
+    "issues": "https://github.com/SengokuCola/maimai-niuniu-plugin/issues"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.0.0"
+  },
+  "sdk": {
+    "min_version": "2.0.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "chat.get_group_streams",
+    "emoji.get_by_description",
+    "message.get_recent",
+    "send.emoji",
+    "send.image",
+    "send.text"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "locales_path": "_locales",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  },
+  "id": "sengokucola.maimai-niuniu-plugin"
+}

@@ -20,7 +20,7 @@ enabled = true
 config_version = "1.3.0"
 
 [schedule]
-interval_minutes = 20
+interval_minutes = 15
 startup_delay_seconds = 30
 
 [chat]
@@ -29,8 +29,8 @@ platforms = ["qq"]
 group_rules = []
 
 [selection]
-history_hours = 128.0
-history_limit = 1000
+history_hours = 256.0
+history_limit = 10000
 min_text_length = 1
 
 [rule]

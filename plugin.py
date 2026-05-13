@@ -446,24 +446,18 @@ class NiuniuPlugin(MaiBotPlugin):
         if message.get("is_command") or message.get("is_notify"):
             return False
 
-        if self._has_raw_only_segment(message):
-            return True
+        raw_message = message.get("raw_message")
+        if isinstance(raw_message, list):
+            raw_segments = self._raw_message_segments(message)
+            if not raw_segments:
+                return False
+            return any(
+                segment_type in {"image", "emoji"} or len(content) >= self.config.selection.min_text_length
+                for segment_type, content in raw_segments
+            )
 
         plain_text = self._message_text(message)
         return bool(plain_text and len(plain_text) >= self.config.selection.min_text_length)
-
-    @staticmethod
-    def _has_raw_only_segment(message: Dict[str, Any]) -> bool:
-        """判断消息中是否包含必须按原始段复读的内容。"""
-
-        raw_message = message.get("raw_message")
-        if not isinstance(raw_message, list):
-            return False
-        return any(
-            isinstance(segment, dict)
-            and str(segment.get("type") or "").strip().lower() in {"image", "emoji", "forward"}
-            for segment in raw_message
-        )
 
     @staticmethod
     def _message_text(message: Dict[str, Any]) -> str:
@@ -522,7 +516,7 @@ class NiuniuPlugin(MaiBotPlugin):
 
     @staticmethod
     def _append_sendable_segment(segments: List[Tuple[str, str]], segment: Dict[str, Any]) -> bool:
-        """把一个原始消息段追加为可发送段。"""
+        """把一个原始消息段追加为可发送段，仅允许文本、图片和表情包。"""
 
         segment_type = str(segment.get("type") or "").strip().lower()
         if segment_type == "text":
@@ -538,36 +532,7 @@ class NiuniuPlugin(MaiBotPlugin):
             segments.append((segment_type, media_base64))
             return True
 
-        if segment_type == "forward":
-            forward_segments = NiuniuPlugin._forward_segments(segment)
-            if not forward_segments:
-                return False
-            segments.extend(forward_segments)
-            return True
-
         return True
-
-    @staticmethod
-    def _forward_segments(segment: Dict[str, Any]) -> List[Tuple[str, str]]:
-        """展开转发消息节点内容，不携带转发外壳。"""
-
-        nodes = segment.get("data")
-        if not isinstance(nodes, list):
-            return []
-
-        segments: List[Tuple[str, str]] = []
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            node_content = node.get("content")
-            if not isinstance(node_content, list):
-                continue
-            for content_segment in node_content:
-                if not isinstance(content_segment, dict):
-                    continue
-                if not NiuniuPlugin._append_sendable_segment(segments, content_segment):
-                    return []
-        return segments
 
     @staticmethod
     def _raw_message_segments(message: Dict[str, Any]) -> List[Tuple[str, str]]:
@@ -589,9 +554,10 @@ class NiuniuPlugin(MaiBotPlugin):
         """发送抽中的历史消息。"""
 
         raw_segments = self._raw_message_segments(message)
-        if self._has_raw_only_segment(message) and not raw_segments:
+        has_raw_message = isinstance(message.get("raw_message"), list)
+        if has_raw_message and not raw_segments:
             self.ctx.logger.info(
-                "麦麦牛牛跳过无法原样发送的复杂消息: message_id=%s",
+                "麦麦牛牛跳过不包含文本、图片或表情包的消息: message_id=%s",
                 str(message.get("message_id") or ""),
             )
             return False

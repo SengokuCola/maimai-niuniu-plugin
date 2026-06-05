@@ -1,6 +1,6 @@
 """麦麦牛牛插件。
 
-定期从匹配规则的群聊中随机选择一个群，抽取一条别人发过的历史消息并发送回该群。
+定期从匹配规则的群聊中随机选择一个群，抽取一条别人发过的文本或图片消息并发送回该群。
 """
 
 from __future__ import annotations
@@ -15,8 +15,11 @@ import random
 import re
 import time
 
-from maibot_sdk import Command, Field, MaiBotPlugin, PluginConfigBase, Tool
-from maibot_sdk.types import ToolParameterInfo, ToolParamType
+from maibot_sdk import Command, Field, HookHandler, MaiBotPlugin, PluginConfigBase, Tool
+from maibot_sdk.types import ErrorPolicy, HookMode, HookOrder, ToolParameterInfo, ToolParamType
+
+
+NIUNIU_REPLYER_INJECTION_MARKER = "【麦麦牛牛随机复读候选】"
 
 
 @dataclass(frozen=True)
@@ -76,7 +79,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用插件")
-    config_version: str = Field(default="1.3.0", description="配置版本")
+    config_version: str = Field(default="1.4.0", description="配置版本")
 
 
 class ScheduleConfig(PluginConfigBase):
@@ -129,6 +132,19 @@ class RepeatRuleConfig(PluginConfigBase):
     cooldown_seconds: float = Field(default=60.0, ge=0.0, le=3600.0, description="同一会话同一内容的复读冷却时间")
 
 
+class ReplyerInjectionConfig(PluginConfigBase):
+    """回复器一次性提示注入配置。"""
+
+    __ui_label__ = "回复注入"
+    __ui_icon__ = "message-square-plus"
+    __ui_order__ = 5
+
+    enabled: bool = Field(default=True, description="是否在回复器请求中随机注入牛牛候选句提示")
+    probability: float = Field(default=0.1, ge=0.0, le=1.0, description="每次回复触发候选句提示的概率")
+    candidate_count: int = Field(default=10, ge=1, le=50, description="每次注入时随机提供的候选句数量")
+    history_limit: int = Field(default=200, ge=1, le=10000, description="每次最多读取多少条当前聊天历史")
+
+
 class NiuniuPluginConfig(PluginConfigBase):
     """麦麦牛牛插件配置模型。"""
 
@@ -137,6 +153,7 @@ class NiuniuPluginConfig(PluginConfigBase):
     chat: ChatConfig = Field(default_factory=ChatConfig)
     selection: SelectionConfig = Field(default_factory=SelectionConfig)
     rule: RepeatRuleConfig = Field(default_factory=RepeatRuleConfig)
+    replyer_injection: ReplyerInjectionConfig = Field(default_factory=ReplyerInjectionConfig)
 
 
 class NiuniuPlugin(MaiBotPlugin):
@@ -346,6 +363,91 @@ class NiuniuPlugin(MaiBotPlugin):
                     anonymous_messages.append(message)
         return list(messages_by_id.values()) + anonymous_messages
 
+    async def _get_recent_messages_from_chat(self, chat_id: str, limit: int, filter_mai: bool) -> List[Any]:
+        """读取指定会话的最近消息。"""
+
+        messages = await self.ctx.call_capability(
+            "message.get_recent",
+            chat_id=chat_id,
+            hours=self.config.selection.history_hours,
+            limit=limit,
+            limit_mode="latest",
+            filter_mai=filter_mai,
+        )
+        recent_messages = _extract_nested_list(messages, "messages")
+        if recent_messages is None:
+            self.ctx.logger.warning(
+                "麦麦牛牛读取最近消息返回格式异常: chat_id=%s result=%r",
+                chat_id,
+                messages,
+            )
+            return []
+        return recent_messages
+
+    async def _get_latest_message_from_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        """读取指定会话的最新一条消息。"""
+
+        recent_messages = await self._get_recent_messages_from_chat(chat_id, limit=1, filter_mai=False)
+        if not recent_messages:
+            return None
+
+        latest_message = recent_messages[-1]
+        return latest_message if isinstance(latest_message, dict) else None
+
+    @staticmethod
+    def _message_user_id(message: Dict[str, Any]) -> str:
+        """提取消息发送者 ID。"""
+
+        user_id = str(message.get("user_id") or "").strip()
+        if user_id:
+            return user_id
+
+        message_info = message.get("message_info")
+        if not isinstance(message_info, dict):
+            return ""
+        user_info = message_info.get("user_info")
+        if not isinstance(user_info, dict):
+            return ""
+        return str(user_info.get("user_id") or "").strip()
+
+    @staticmethod
+    def _message_platform(message: Dict[str, Any], fallback_platform: str) -> str:
+        """提取消息平台。"""
+
+        platform = str(message.get("platform") or "").strip()
+        if platform:
+            return platform
+
+        message_info = message.get("message_info")
+        if isinstance(message_info, dict):
+            platform = str(message_info.get("platform") or "").strip()
+            if platform:
+                return platform
+        return fallback_platform
+
+    async def _latest_chat_message_is_self(self, chat_id: str, fallback_platform: str) -> bool:
+        """判断当前会话最新一条消息是否来自麦麦自己。"""
+
+        latest_message = await self._get_latest_message_from_chat(chat_id)
+        if latest_message is None:
+            return False
+
+        user_id = self._message_user_id(latest_message)
+        platform = self._message_platform(latest_message, fallback_platform)
+        if not user_id or not platform:
+            self.ctx.logger.warning(
+                "麦麦牛牛无法判断最新消息发送者: chat_id=%s platform=%s user_id=%s message_id=%s",
+                chat_id,
+                platform,
+                user_id,
+                str(latest_message.get("message_id") or ""),
+            )
+            return False
+
+        from src.chat.utils.utils import is_bot_self
+
+        return is_bot_self(platform, user_id)
+
     async def _build_group_choice_from_context(self, stream_id: str, platform: str, group_id: str) -> Optional[GroupChoice]:
         """根据当前命令上下文构造当前群聊选择。"""
 
@@ -385,6 +487,15 @@ class NiuniuPlugin(MaiBotPlugin):
 
     async def _pick_from_group(self, group: GroupChoice) -> bool:
         """从指定群聊抽取并发送一条历史消息。"""
+
+        if await self._latest_chat_message_is_self(group.send_chat_id, group.platform):
+            self.ctx.logger.info(
+                "麦麦牛牛跳过复读，最新一条消息来自麦麦自己: platform=%s group_id=%s chat_id=%s",
+                group.platform,
+                group.group_id,
+                group.send_chat_id,
+            )
+            return False
 
         recent_messages = await self._get_recent_messages_from_group(group)
         candidates = [message for message in recent_messages if self._is_usable_message(message)]
@@ -452,9 +563,12 @@ class NiuniuPlugin(MaiBotPlugin):
             if not raw_segments:
                 return False
             return any(
-                segment_type in {"image", "emoji"} or len(content) >= self.config.selection.min_text_length
+                segment_type == "image" or len(content) >= self.config.selection.min_text_length
                 for segment_type, content in raw_segments
             )
+
+        if message.get("is_emoji"):
+            return False
 
         plain_text = self._message_text(message)
         return bool(plain_text and len(plain_text) >= self.config.selection.min_text_length)
@@ -481,8 +595,142 @@ class NiuniuPlugin(MaiBotPlugin):
         return "".join(text_parts).strip()
 
     @staticmethod
+    def _raw_text_segments(message: Dict[str, Any]) -> List[str]:
+        """提取原始消息中的纯文本段。"""
+
+        raw_message = message.get("raw_message")
+        if not isinstance(raw_message, list):
+            return []
+
+        text_parts: List[str] = []
+        for segment in raw_message:
+            if not isinstance(segment, dict) or str(segment.get("type") or "").strip().lower() != "text":
+                continue
+            text = str(segment.get("data") or segment.get("content") or "").strip()
+            if text:
+                text_parts.append(text)
+        return text_parts
+
+    @staticmethod
+    def _split_text_sentences(text: str) -> List[str]:
+        """将聊天文本拆成适合提供给回复器选择的候选句。"""
+
+        sentences: List[str] = []
+        for line in text.splitlines():
+            normalized_line = re.sub(r"\s+", " ", line).strip()
+            if not normalized_line:
+                continue
+            parts = re.split(r"(?<=[。！？!?])\s*", normalized_line)
+            sentences.extend(part.strip() for part in parts if part.strip())
+        return sentences
+
+    def _message_replyer_candidate_sentences(self, message: Any) -> List[str]:
+        """从一条历史消息中提取可注入给回复器选择的候选句。"""
+
+        if not isinstance(message, dict):
+            return []
+        if message.get("is_command") or message.get("is_notify") or message.get("is_emoji"):
+            return []
+
+        raw_message = message.get("raw_message")
+        if isinstance(raw_message, list):
+            text = "\n".join(self._raw_text_segments(message)).strip()
+        else:
+            text = self._message_text(message)
+        if not text:
+            return []
+
+        candidates: List[str] = []
+        for sentence in self._split_text_sentences(text):
+            normalized_sentence = self._normalize_repeat_text(sentence)
+            is_valid, _ = self._validate_repeat_text(normalized_sentence)
+            if not is_valid or self._extract_emoji_description(normalized_sentence) is not None:
+                continue
+            candidates.append(normalized_sentence)
+        return candidates
+
+    async def _pick_replyer_candidate_sentences(self, chat_id: str) -> List[str]:
+        """从当前聊天历史中随机抽取回复器候选句。"""
+
+        injection_config = self.config.replyer_injection
+        recent_messages = await self._get_recent_messages_from_chat(
+            chat_id,
+            limit=injection_config.history_limit,
+            filter_mai=True,
+        )
+
+        candidates: List[str] = []
+        seen_texts: set[str] = set()
+        for message in recent_messages:
+            for sentence in self._message_replyer_candidate_sentences(message):
+                if sentence in seen_texts:
+                    continue
+                seen_texts.add(sentence)
+                candidates.append(sentence)
+
+        random.shuffle(candidates)
+        return candidates[: injection_config.candidate_count]
+
+    @staticmethod
+    def _extract_prompt_message_text(message: Dict[str, Any]) -> str:
+        """提取 LLM prompt 消息中的文本内容。"""
+
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            return ""
+
+        text_parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+                continue
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                text_parts.append(item["text"])
+        return "".join(text_parts)
+
+    @staticmethod
+    def _has_replyer_injection_marker(messages: List[Dict[str, Any]]) -> bool:
+        """判断本次 prompt 是否已经注入过牛牛候选句提示。"""
+
+        return any(
+            NIUNIU_REPLYER_INJECTION_MARKER in NiuniuPlugin._extract_prompt_message_text(message)
+            for message in messages
+        )
+
+    @staticmethod
+    def _build_replyer_injection_prompt(sentences: List[str]) -> str:
+        """构造一次性 user message 提示。"""
+
+        lines = [
+            NIUNIU_REPLYER_INJECTION_MARKER,
+            "下面是从当前聊天历史里随机抽取的候选句。请先在心里比较它们和当前对话的气氛，从中选一句作为本次回复内容。",
+            "最终只输出所选原句，不要解释、不要编号、不要改写，也不要添加前后缀。",
+            "候选句：",
+        ]
+        lines.extend(f"{index}. {sentence}" for index, sentence in enumerate(sentences, start=1))
+        return "\n".join(lines)
+
+    def _inject_replyer_injection_prompt(self, messages: Any, sentences: List[str]) -> Any:
+        """向 replyer 本次请求末尾追加牛牛候选句提示。"""
+
+        if not sentences or not isinstance(messages, list):
+            return messages
+
+        normalized_messages = [dict(message) for message in messages if isinstance(message, dict)]
+        if len(normalized_messages) != len(messages) or self._has_replyer_injection_marker(normalized_messages):
+            return messages
+
+        injection_message = {
+            "role": "user",
+            "content": self._build_replyer_injection_prompt(sentences),
+        }
+        return [*normalized_messages, injection_message]
+
+    @staticmethod
     def _segment_base64(segment: Dict[str, Any]) -> str:
-        """历史消息通常只保存媒体 hash，这里通过对应媒体管理器回查文件。"""
+        """历史图片消息通常只保存媒体 hash，这里通过图片管理器回查文件。"""
 
         segment_type = str(segment.get("type") or "").strip().lower()
         media_hash = NiuniuPlugin._segment_hash(segment)
@@ -496,11 +744,6 @@ class NiuniuPlugin(MaiBotPlugin):
 
                 image = image_manager.get_image_from_db(media_hash)
                 media_path = image.full_path if image is not None else None
-            elif segment_type == "emoji":
-                from src.emoji_system.emoji_manager import emoji_manager
-
-                emoji = emoji_manager.get_emoji_by_hash_from_db(media_hash)
-                media_path = emoji.full_path if emoji is not None else None
 
             if media_path is None or not media_path.is_file():
                 return ""
@@ -516,7 +759,7 @@ class NiuniuPlugin(MaiBotPlugin):
 
     @staticmethod
     def _append_sendable_segment(segments: List[Tuple[str, str]], segment: Dict[str, Any]) -> bool:
-        """把一个原始消息段追加为可发送段，仅允许文本、图片和表情包。"""
+        """把一个原始消息段追加为可发送段，仅允许文本和图片。"""
 
         segment_type = str(segment.get("type") or "").strip().lower()
         if segment_type == "text":
@@ -525,7 +768,7 @@ class NiuniuPlugin(MaiBotPlugin):
                 segments.append(("text", text))
             return True
 
-        if segment_type in {"image", "emoji"}:
+        if segment_type == "image":
             media_base64 = NiuniuPlugin._segment_base64(segment)
             if not media_base64:
                 return False
@@ -557,7 +800,7 @@ class NiuniuPlugin(MaiBotPlugin):
         has_raw_message = isinstance(message.get("raw_message"), list)
         if has_raw_message and not raw_segments:
             self.ctx.logger.info(
-                "麦麦牛牛跳过不包含文本、图片或表情包的消息: message_id=%s",
+                "麦麦牛牛跳过不包含文本或图片的消息: message_id=%s",
                 str(message.get("message_id") or ""),
             )
             return False
@@ -583,14 +826,6 @@ class NiuniuPlugin(MaiBotPlugin):
                     )
                     sent_any = True
                     continue
-                if segment_type == "emoji":
-                    await self.ctx.send.emoji(
-                        content,
-                        chat_id,
-                        sync_to_maisaka_history=True,
-                        maisaka_source_kind="plugin_send",
-                    )
-                    sent_any = True
             if sent_any:
                 return True
 
@@ -647,31 +882,6 @@ class NiuniuPlugin(MaiBotPlugin):
             return "表情包"
         return None
 
-    @staticmethod
-    def _extract_emoji_base64(payload: Any) -> str:
-        """从表情检索返回值中提取 base64。"""
-
-        current = payload
-        visited: set[int] = set()
-        while isinstance(current, dict):
-            current_id = id(current)
-            if current_id in visited:
-                break
-            visited.add(current_id)
-
-            base64_value = str(current.get("base64") or current.get("emoji_base64") or "").strip()
-            if base64_value:
-                return base64_value
-
-            for key in ("emoji", "result", "data"):
-                nested_value = current.get(key)
-                if isinstance(nested_value, dict):
-                    current = nested_value
-                    break
-            else:
-                break
-        return ""
-
     def _is_in_repeat_cooldown(self, stream_id: str, text: str) -> bool:
         """检查同一会话同一内容是否仍处于冷却期。"""
 
@@ -686,6 +896,57 @@ class NiuniuPlugin(MaiBotPlugin):
             return True
         self._last_repeat_at[key] = now
         return False
+
+    @HookHandler(
+        "maisaka.replyer.before_model_request",
+        name="maimai_niuniu_replyer_random_sentence_choice",
+        description="按概率向 replyer 注入当前聊天历史候选句，让模型从中选择一句作为回复。",
+        mode=HookMode.BLOCKING,
+        order=HookOrder.LATE,
+        timeout_ms=3000,
+        error_policy=ErrorPolicy.SKIP,
+    )
+    async def inject_replyer_random_sentence_choice(self, **kwargs: Any) -> Dict[str, Any]:
+        """在 replyer 最终请求中按概率追加一次性的牛牛候选句提示。"""
+
+        modified_kwargs = dict(kwargs)
+        injection_config = self.config.replyer_injection
+        if not self.config.plugin.enabled or not injection_config.enabled:
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        try:
+            retry_count = int(modified_kwargs.get("retry_count") or 0)
+        except (TypeError, ValueError):
+            retry_count = 0
+        if retry_count > 0:
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        session_id = str(modified_kwargs.get("session_id") or "").strip()
+        messages = modified_kwargs.get("messages")
+        if not session_id or not isinstance(messages, list):
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        probability = injection_config.probability
+        if probability <= 0.0 or (probability < 1.0 and random.random() >= probability):
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+        if await self._latest_chat_message_is_self(session_id, ""):
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        sentences = await self._pick_replyer_candidate_sentences(session_id)
+        if not sentences:
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        injected_messages = self._inject_replyer_injection_prompt(messages, sentences)
+        if injected_messages is messages:
+            return {"action": "continue", "modified_kwargs": modified_kwargs}
+
+        modified_kwargs["messages"] = injected_messages
+        self.ctx.logger.info(
+            "麦麦牛牛已向 replyer 注入随机候选句提示: chat_id=%s candidate_count=%s",
+            session_id,
+            len(sentences),
+        )
+        return {"action": "continue", "modified_kwargs": modified_kwargs}
 
     @Command(
         "niuniu_once",
@@ -710,7 +971,7 @@ class NiuniuPlugin(MaiBotPlugin):
         "repeat_after_duplicates",
         description=(
             "当当前聊天上下文中已经有多条完全相同的文本消息时使用。"
-            "不要用于只有一条消息、语义相似但文本不同、或命令类消息。"
+            "不要用于只有一条消息、语义相似但文本不同、命令类消息或表情包。"
         ),
         parameters=[
             ToolParameterInfo(
@@ -725,7 +986,7 @@ class NiuniuPlugin(MaiBotPlugin):
         self,
         context: str = "",
         stream_id: str = "",
-        **_kwargs: Any,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """发送 LLM 从上下文中选出的复读文本。"""
 
@@ -735,6 +996,9 @@ class NiuniuPlugin(MaiBotPlugin):
             return {"success": False, "content": "缺少当前会话 stream_id，无法复读。"}
 
         try:
+            if await self._latest_chat_message_is_self(stream_id, str(kwargs.get("platform") or "")):
+                return {"success": False, "content": "最新一条消息来自麦麦自己，跳过复读。"}
+
             repeated_text = self._normalize_repeat_text(context)
             is_valid, error_message = self._validate_repeat_text(repeated_text)
             if not is_valid:
@@ -744,21 +1008,7 @@ class NiuniuPlugin(MaiBotPlugin):
 
             emoji_description = self._extract_emoji_description(repeated_text)
             if emoji_description is not None:
-                emoji_result = await self.ctx.emoji.get_by_description(emoji_description)
-                emoji_base64 = self._extract_emoji_base64(emoji_result)
-                if not emoji_base64:
-                    return {"success": False, "content": f"没有找到可复读的表情包：{emoji_description}"}
-                await self.ctx.send.emoji(
-                    emoji_base64,
-                    stream_id,
-                    sync_to_maisaka_history=True,
-                    maisaka_source_kind="plugin_send",
-                )
-                return {
-                    "success": True,
-                    "content": f"已复读表情包：{emoji_description}",
-                    "repeated_emoji_description": emoji_description,
-                }
+                return {"success": False, "content": "麦麦牛牛不会复读表情包。"}
 
             await self.ctx.send.text(
                 repeated_text,

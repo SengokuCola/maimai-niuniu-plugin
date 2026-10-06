@@ -1,5 +1,11 @@
 # 麦麦牛牛插件
 
+<img src="assets/icon.svg" alt="麦麦牛牛插件头像" width="160" />
+
+当前版本：`1.4.3`
+
+适用于 MaiBot `1.3.x`，要求插件 SDK `>=2.9.0`。回复候选句通过 Context Items Hook 注入。
+
 麦麦牛牛插件用于在 MaiBot 中定期从匹配规则的群聊历史消息里随机抽取一条文本或图片消息，并发送回该群。
 
 插件同时提供 `repeat_after_duplicates` 工具：当当前聊天上下文中已经出现多条完全相同的文本消息时，麦麦可以复读一次相同内容。复读工具支持普通文本，并内置长度限制、命令过滤、表情包过滤和同会话同内容冷却，避免刷屏。
@@ -56,6 +62,14 @@ history_limit = 200
 
 - `/niuniu` 或 `/牛牛`：立即在当前群聊触发一次历史消息抽取。
 - `repeat_after_duplicates`：供 LLM 在上下文出现重复文本时调用，参数 `context` 为要复读的原文。
+
+## 更新日志
+
+版本改动见 [更新日志](changelog.md)。
+
+## 灵感来源
+
+本插件的灵感来自 [Pallas-Bot](https://github.com/PallasBot/Pallas-Bot)。插件头像以 PallasBot 的 GitHub 头像为参考，使用 SVG 手工绘制。感谢 [Pallas-Bot 的贡献者们](https://github.com/PallasBot/Pallas-Bot/graphs/contributors)。
 
 ## 许可证
 

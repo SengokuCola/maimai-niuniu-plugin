@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">麦麦牛牛</title>
+  <desc id="desc">参考 PallasBot 头像绘制：棕发绿眼的牛角少女、头顶玫瑰与青色聊天屏幕。</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#132a39"/><stop offset="1" stop-color="#254f61"/></linearGradient>
+    <linearGradient id="hair" x2=".9" y2="1"><stop stop-color="#a77d6c"/><stop offset="1" stop-color="#61483f"/></linearGradient>
+    <linearGradient id="horn" x2="1" y2="1"><stop stop-color="#4a4a50"/><stop offset="1" stop-color="#171d25"/></linearGradient>
+    <linearGradient id="coat" x2="1" y2="1"><stop stop-color="#8785b2"/><stop offset="1" stop-color="#424b75"/></linearGradient>
+    <clipPath id="clip"><rect width="512" height="512" rx="100"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="url(#bg)" d="M0 0h512v512H0z"/>
+    <!-- 青色悬浮聊天屏幕与键盘呼应参考头像的复读机主题。 -->
+    <g transform="rotate(9 350 170)">
+      <rect x="207" y="53" width="298" height="214" rx="22" fill="#e6fbfc" stroke="#62ddeb" stroke-width="7"/>
+      <path d="M226 87h259" stroke="#b0e7eb" stroke-width="4"/>
+      <circle cx="231" cy="70" r="4" fill="#29bad5"/>
+      <circle cx="245" cy="70" r="4" fill="#71d4df"/>
+      <path d="M253 110h207v52H281l-15 12v-12h-13z" fill="#22c9e7"/>
+      <path d="M275 130h156m-156 14h111" stroke="#fff" stroke-width="6"/>
+      <path d="M230 188h182v47H250l-12 10v-10h-8z" fill="#b6eef3"/>
+      <path d="M253 205h132m-132 14h94" stroke="#4c9fac" stroke-width="5"/>
+    </g>
+    <path d="m284 319 174 31 38 68-187-31z" fill="#72dcef" stroke="#28a9cb" stroke-width="6"/>
+    <g stroke="#36b5d4" stroke-width="3" opacity=".8">
+      <path d="m302 337 158 29m-147-9 158 29m-146-9 158 28M328 332l34 60m-5-55 34 60m-5-55 34 60m-5-55 34 60"/>
+    </g>
+    <!-- 人物轮廓使用独立矢量路径，未嵌入原头像位图。 -->
+    <path d="M84 165Q25 214 34 369L18 428l61-30 29-108z" fill="#4a3934" stroke="#292c35" stroke-width="7"/>
+    <path d="M19 521v-93q19-64 112-84l104 15q63 27 90 102l127 3 60-23v81z" fill="url(#coat)" stroke="#2b304b" stroke-width="7"/>
+    <path d="m111 339 98 9 33 88-58 42-73-50-38-58z" fill="#f0ede3"/>
+    <path d="m145 364 24 4-12 99-24-7z" fill="#3b4657"/>
+    <path d="m154 378 9 1-8 46-9-2z" fill="#93c8d6"/>
+    <path d="m170 294-5 70q17 27 45 1l-9-72z" fill="#efd5bd" stroke="#604a43" stroke-width="5"/>
+    <path d="M115 136q98-34 142 53l-1 66 17 27-22 13q-13 49-62 45l-60-35-26-80z" fill="#fae4ce" stroke="#604a43" stroke-width="5"/>
+    <path d="M65 161q8-70 91-61 64-5 87 54l9 83q-29-37-35-73-14 68-78 93l18-49q-25 72-67 91l23-70-45 75-22 68q-29-103 19-211z" fill="url(#hair)" stroke="#443b39" stroke-width="6"/>
+    <path d="M167 132q-3 58-45 103m25-110q-10 43-41 70m91-53q-5 28-23 51M99 273q-18 30-15 62" fill="none" stroke="#c29981" stroke-width="5" opacity=".65"/>
+    <!-- 左右牛角、单侧绿眼和玫瑰是头像的主要识别特征。 -->
+    <path d="M101 163q-56 16-71-31-8-27 10-49-2 39 40 28 38-9 45 20z" fill="url(#horn)" stroke="#171d25" stroke-width="6"/>
+    <path d="M45 109q10 18 37 16m-35 14q22 13 48 3" fill="none" stroke="#65626a" stroke-width="4"/>
+    <path d="M230 173q63 3 45-74 32 37 23 75-8 37-47 31z" fill="url(#horn)" stroke="#171d25" stroke-width="6"/>
+    <path d="M253 187q28-4 31-30" fill="none" stroke="#68656d" stroke-width="4"/>
+    <path d="m184 249 28-14 23 3q-12 29-45 23z" fill="#fff7e7"/>
+    <path d="M213 238q10 17-4 24-17-1-13-18z" fill="#81b965"/>
+    <ellipse cx="209" cy="249" rx="4" ry="10" fill="#294d3b"/>
+    <circle cx="212" cy="244" r="3" fill="#fff"/>
+    <path d="m181 250 29-16 23 3" fill="none" stroke="#443530" stroke-width="6"/>
+    <path d="m197 222 23-8" stroke="#795443" stroke-width="5"/>
+    <path d="m237 300 13-3" stroke="#b98276" stroke-width="3"/>
+    <path d="M151 109q7-37 3-62" fill="none" stroke="#477a49" stroke-width="7"/>
+    <path d="M153 86q-30-6-34-33 28 5 34 33m2-18q26-4 31-25-23 3-31 25" fill="#669252" stroke="#3f7044" stroke-width="3"/>
+    <path d="M145 51q-22-6-22-21 0-11 13-9-2-22 13-23 16 0 19 20 20-3 24 12 2 18-22 23z" fill="#b46659" stroke="#713f39" stroke-width="4"/>
+    <path d="M141 20q-3 18 23 29m-34-15q17 17 42 13m-12-26q17 7 16 19" fill="none" stroke="#dc9980" stroke-width="4"/>
+    <path d="m223 438 31-76 9-45q4-12 13-4l4 31 22-20q8-7 16 0l25 18q12 9 3 14l-32-8-16 22 40 8q17 4 10 15l-52 4-31 50z" fill="#fae4ce" stroke="#76544a" stroke-width="5"/>
+    <path d="m245 411 42 20-28 52-56-31z" fill="#575d88" stroke="#32364f" stroke-width="6"/>
+    <path d="m22 465 30 47m57-87-7 87m248-49 11 49" fill="none" stroke="#a0a0c3" stroke-width="7" opacity=".5"/>
+  </g>
+</svg>

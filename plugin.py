@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 import asyncio
 import base64
@@ -498,7 +500,9 @@ class NiuniuPlugin(MaiBotPlugin):
             return False
 
         recent_messages = await self._get_recent_messages_from_group(group)
-        candidates = [message for message in recent_messages if self._is_usable_message(message)]
+        candidates = await asyncio.to_thread(
+            lambda: [message for message in recent_messages if self._is_usable_message(message)]
+        )
         if not candidates:
             self.ctx.logger.info(
                 "麦麦牛牛没有找到可抽取的历史消息: platform=%s group_id=%s query_chat_ids=%s",
@@ -673,22 +677,16 @@ class NiuniuPlugin(MaiBotPlugin):
 
     @staticmethod
     def _extract_prompt_message_text(message: Dict[str, Any]) -> str:
-        """提取 LLM prompt 消息中的文本内容。"""
+        """提取 Context Item 消息中的文本内容。"""
 
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-        if not isinstance(content, list):
+        parts = message.get("parts")
+        if not isinstance(parts, list):
             return ""
-
-        text_parts: List[str] = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-                continue
-            if isinstance(item, dict) and isinstance(item.get("text"), str):
-                text_parts.append(item["text"])
-        return "".join(text_parts)
+        return "".join(
+            part["text"]
+            for part in parts
+            if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str)
+        )
 
     @staticmethod
     def _has_replyer_injection_marker(messages: List[Dict[str, Any]]) -> bool:
@@ -723,8 +721,13 @@ class NiuniuPlugin(MaiBotPlugin):
             return messages
 
         injection_message = {
-            "role": "user",
-            "content": self._build_replyer_injection_prompt(sentences),
+            "item_type": "UserMessageItem",
+            "meta": {
+                "item_id": uuid4().hex,
+                "logical_turn_id": None,
+                "timestamp": datetime.now().isoformat(),
+            },
+            "parts": [{"type": "text", "text": self._build_replyer_injection_prompt(sentences)}],
         }
         return [*normalized_messages, injection_message]
 
@@ -796,7 +799,7 @@ class NiuniuPlugin(MaiBotPlugin):
     async def _send_message(self, message: Dict[str, Any], chat_id: str) -> bool:
         """发送抽中的历史消息。"""
 
-        raw_segments = self._raw_message_segments(message)
+        raw_segments = await asyncio.to_thread(self._raw_message_segments, message)
         has_raw_message = isinstance(message.get("raw_message"), list)
         if has_raw_message and not raw_segments:
             self.ctx.logger.info(
@@ -922,7 +925,7 @@ class NiuniuPlugin(MaiBotPlugin):
             return {"action": "continue", "modified_kwargs": modified_kwargs}
 
         session_id = str(modified_kwargs.get("session_id") or "").strip()
-        messages = modified_kwargs.get("messages")
+        messages = modified_kwargs.get("items")
         if not session_id or not isinstance(messages, list):
             return {"action": "continue", "modified_kwargs": modified_kwargs}
 
@@ -940,7 +943,7 @@ class NiuniuPlugin(MaiBotPlugin):
         if injected_messages is messages:
             return {"action": "continue", "modified_kwargs": modified_kwargs}
 
-        modified_kwargs["messages"] = injected_messages
+        modified_kwargs["items"] = injected_messages
         self.ctx.logger.info(
             "麦麦牛牛已向 replyer 注入随机候选句提示: chat_id=%s candidate_count=%s",
             session_id,
